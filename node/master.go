@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"os/signal"
@@ -9,6 +10,10 @@ import (
 	"github.com/gdamore/mangos/protocol/rep"
 	"github.com/gdamore/mangos/protocol/surveyor"
 	"github.com/gdamore/mangos/transport/tcp"
+
+	capn "github.com/glycerine/go-capnproto"
+
+	"github.com/sudharsh/monk/messages"
 )
 
 type Master struct {
@@ -71,8 +76,16 @@ func (m *Master) Start() {
 	for {
 		select {
 		case r := <-regChan:
-			log.Printf("Got registration - %s", string(r))
-			m.RegistrationSock.Send([]byte("ACK"))
+			pupilMessage, err := readRegistration(r)
+			if err != nil {
+				break
+			}
+			pupilNode := pupilMessage.Url()
+			pupilUuid := pupilMessage.Uuid()
+			log.Printf("Got registration from %s:%s\n", pupilUuid, pupilNode)
+			ackMessage := m.prepareAckMessage()
+
+			m.RegistrationSock.Send(ackMessage)
 
 		case s := <-c:
 			log.Printf("Got signal to quit. Bye! - %s\n", s)
@@ -83,4 +96,28 @@ func (m *Master) Start() {
 			os.Exit(0)
 		}
 	}
+}
+
+// Unexported functions follow
+func readRegistration(regMessage []byte) (*messages.Pupil, error) {
+	buf := bytes.NewBuffer(regMessage)
+
+	capMsg, err := capn.ReadFromStream(buf, nil)
+	if err != nil {
+		log.Printf("Error unpacking message - %s\n", err.Error())
+		return nil, err
+	}
+	p := messages.ReadRootPupil(capMsg)
+	return &p, nil
+}
+
+func (m *Master) prepareAckMessage() []byte {
+	seg := capn.NewBuffer(nil)
+	_resp := messages.NewRootResponse(seg)
+	_resp.SetSuccess(true)
+
+	buf := bytes.Buffer{}
+	seg.WriteTo(&buf)
+
+	return buf.Bytes()
 }

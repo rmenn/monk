@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"os/signal"
@@ -9,16 +10,24 @@ import (
 	"github.com/gdamore/mangos/protocol/req"
 	"github.com/gdamore/mangos/protocol/respondent"
 	"github.com/gdamore/mangos/transport/tcp"
+
+	"code.google.com/p/go-uuid/uuid"
+
+	capn "github.com/glycerine/go-capnproto"
+
+	"github.com/sudharsh/monk/messages"
 )
 
 type Pupil struct {
 	Node
+	UUID                  string
 	MasterRegistrationURL string
 	Sock                  mangos.Socket
 }
 
 func NewPupil(listenURL string, masterRegistrationURL string) *Pupil {
 	p := Pupil{}
+	p.UUID = uuid.New()
 	p.MasterRegistrationURL = masterRegistrationURL
 	//	p.MasterEventURL = masterEventURL
 	p.URL = listenURL
@@ -53,6 +62,9 @@ func (p *Pupil) Start() {
 	}
 }
 
+// Private funcs follow
+
+// Register this pupil with the master
 func (p *Pupil) register(regChan chan []byte) {
 	var err error
 	log.Printf("Registering with master at %s\n", p.MasterRegistrationURL)
@@ -61,7 +73,8 @@ func (p *Pupil) register(regChan chan []byte) {
 	}
 
 	// We need to receive this only once
-	err = p.Sock.Send([]byte("foobar"))
+	regMessage := p.prepareRegistrationMessage()
+	err = p.Sock.Send(regMessage)
 	if err != nil {
 		log.Fatalf("Couldn't send registration request\n")
 	}
@@ -74,8 +87,34 @@ func (p *Pupil) register(regChan chan []byte) {
 	regChan <- msg
 }
 
+// FIXME: Use something json.Marshal interface to convert it into a capnp message format
+
+func isSuccess(ackMessage []byte) bool {
+	buf := bytes.NewBuffer(ackMessage)
+
+	capMsg, err := capn.ReadFromStream(buf, nil)
+	if err != nil {
+		log.Printf("Error unpacking message - %s\n", err.Error())
+		return false
+	}
+	s := messages.ReadRootResponse(capMsg)
+	return s.Success()
+}
+
+func (p *Pupil) prepareRegistrationMessage() []byte {
+	seg := capn.NewBuffer(nil)
+	_p := messages.NewRootPupil(seg)
+	_p.SetUuid(p.UUID)
+	_p.SetUrl(p.URL)
+
+	buf := bytes.Buffer{}
+	seg.WriteTo(&buf)
+
+	return buf.Bytes()
+}
+
 func (p *Pupil) handleRegistration(response []byte, eventChan chan []byte) {
-	if string(response) != "ACK" {
+	if !isSuccess(response) {
 		log.Fatal("Couldn't register with the monk master")
 	}
 	log.Printf("pupil registered successfully")

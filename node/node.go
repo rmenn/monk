@@ -1,7 +1,7 @@
 package node
 
 type NodeInterface interface {
-	Start(url string)
+	Start()
 	Stop()
 	Status() (string, error)
 }
