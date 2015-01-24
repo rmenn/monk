@@ -1,6 +1,7 @@
 all: monk
 
 monk: messages/monk.capnp.go
+	go fmt ./...
 	go build
 
 messages/monk.capnp.go: 
