@@ -64,7 +64,7 @@ func (p *Pupil) Start() {
 
 // Private funcs follow
 
-// Register this pupil with the master
+// Register this pupil with the master by packing a bunch of facts
 func (p *Pupil) register(regChan chan []byte) {
 	var err error
 	log.Printf("Registering with master at %s\n", p.MasterRegistrationURL)
@@ -88,7 +88,6 @@ func (p *Pupil) register(regChan chan []byte) {
 }
 
 // FIXME: Use something json.Marshal interface to convert it into a capnp message format
-
 func isSuccess(ackMessage []byte) bool {
 	buf := bytes.NewBuffer(ackMessage)
 
@@ -113,6 +112,11 @@ func (p *Pupil) prepareRegistrationMessage() []byte {
 	return buf.Bytes()
 }
 
+// Once the monk master responds saying the pupil registration is successful
+// Close the socket to the registration port of the master
+// and re-use the same socket to start this node as a respondent to the event
+// socket in the master.
+// This is done since registration should be done only once anyway
 func (p *Pupil) handleRegistration(response []byte, eventChan chan []byte) {
 	if !isSuccess(response) {
 		log.Fatal("Couldn't register with the monk master")

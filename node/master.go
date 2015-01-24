@@ -37,27 +37,7 @@ func (m *Master) Start() {
 
 	signal.Notify(c, os.Interrupt, os.Kill)
 
-	var err error
-
-	if m.RegistrationSock, err = rep.NewSocket(); err != nil {
-		log.Fatalf("Couldn't get registration socket - %s\n", err.Error())
-	}
-	m.RegistrationSock.AddTransport(tcp.NewTransport())
-
-	if m.EventSock, err = surveyor.NewSocket(); err != nil {
-		log.Fatalf("Couldn't get publish socket - %s\n", err.Error())
-	}
-	m.EventSock.AddTransport(tcp.NewTransport())
-
-	err = m.RegistrationSock.Listen(m.RegistrationURL)
-	if err != nil {
-		log.Fatalf("Couldn't get the registration port open - %s\n", err.Error())
-	}
-
-	err = m.EventSock.Listen(m.URL)
-	if err != nil {
-		log.Fatalf("Couldn't get the publish port up - %s\n", err.Error())
-	}
+	m.setupPorts()
 
 	go func() {
 		for {
@@ -65,7 +45,6 @@ func (m *Master) Start() {
 			regChan <- resp
 		}
 	}()
-
 	go func() {
 		for {
 			resp, _ := m.EventSock.Recv()
@@ -84,9 +63,7 @@ func (m *Master) Start() {
 			pupilUuid := pupilMessage.Uuid()
 			log.Printf("Got registration from %s:%s\n", pupilUuid, pupilNode)
 			ackMessage := m.prepareAckMessage()
-
 			m.RegistrationSock.Send(ackMessage)
-
 		case s := <-c:
 			log.Printf("Got signal to quit. Bye! - %s\n", s)
 			close(regChan)
@@ -99,6 +76,28 @@ func (m *Master) Start() {
 }
 
 // Unexported functions follow
+func (m *Master) setupPorts() {
+	var err error
+	if m.RegistrationSock, err = rep.NewSocket(); err != nil {
+		log.Fatalf("Couldn't get registration socket - %s\n", err.Error())
+	}
+	m.RegistrationSock.AddTransport(tcp.NewTransport())
+
+	if m.EventSock, err = surveyor.NewSocket(); err != nil {
+		log.Fatalf("Couldn't get publish socket - %s\n", err.Error())
+	}
+	m.EventSock.AddTransport(tcp.NewTransport())
+
+	err = m.RegistrationSock.Listen(m.RegistrationURL)
+	if err != nil {
+		log.Fatalf("Couldn't get the registration port open - %s\n", err.Error())
+	}
+	err = m.EventSock.Listen(m.URL)
+	if err != nil {
+		log.Fatalf("Couldn't get the publish port up - %s\n", err.Error())
+	}
+}
+
 func readRegistration(regMessage []byte) (*messages.Pupil, error) {
 	buf := bytes.NewBuffer(regMessage)
 
